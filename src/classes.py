@@ -56,4 +56,94 @@ class HeadHunterAPI(API_Connect):
         return dict_vacancies
 
 
+class SuperJobAPI(API_Connect):
 
+    def __init__(self):
+        self.vacancies_url = "https://api.superjob.ru/2.0/vacancies/"
+
+    def get_vacancies(self, keyword: str):
+        params = {
+            "keyword": keyword,
+            "count": 20,
+        }
+        headers = {
+            "X-Api-App-Id": "v3.r.137922002.529073727dc924bcfa8182478cc66a27c363155c.6c23baf9918220689826d08e9b6116bc7490efa6",
+            "Authorization": "Bearer r.000000010000001.example.access_token",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        response_SJ = requests.get(self.vacancies_url, params=params, headers=headers)
+        ids_SJ = [item["id"] for item in response_SJ.json()["objects"]]
+        dict_vacancies = {}
+        for item_id in ids_SJ:
+            get_vac = requests.get(f"{self.vacancies_url}{item_id}", headers=headers).json()
+            dict_vacancies[item_id] = {"name": get_vac["profession"], "salary from": get_vac["payment_from"],
+                                       "salary to": get_vac["payment_to"], "url": get_vac["link"],
+                                       "experience": get_vac["experience"]["title"],
+                                       "tasks": get_vac["vacancyRichText"]}
+        return dict_vacancies
+
+
+class Vacancy:
+
+    def __init__(self, id_vac: int, name: str, url: str, salary_from: int, salary_to: int, experience: str, tasks: str):
+        try:
+            self.id_vac = id_vac
+            self.name = name
+            self.url = url
+            self.salary_from = salary_from
+            self.salary_to = salary_to
+            self.experience = experience
+            self.tasks = tasks
+        except IndexError:
+            self.name = None
+            self.url = None
+            self.salary_from = None
+            self.salary_to = None
+            self.experience = None
+            self.tasks = None
+
+    def __float__(self):
+        self.salary_to = None if not self.salary_to else self.salary_to
+        self.salary_from = None if not self.salary_from else self.salary_from
+        if self.salary_from is not None and self.salary_to is not None:
+            return float((self.salary_from + self.salary_to) / 2)
+        elif self.salary_from is not None and self.salary_to is None:
+            return float(self.salary_from)
+        elif self.salary_from is None and self.salary_to is not None:
+            return float(self.salary_to)
+        else:
+            return 0.0
+
+    def __ge__(self, other):
+        if isinstance(other, Vacancy):
+            return float(self) >= float(other)
+        elif isinstance(other, int):
+            return float(self) >= other
+
+    def __le__(self, other):
+        if isinstance(other, Vacancy):
+            return float(self) <= float(other)
+        elif isinstance(other, int):
+            return float(self) <= other
+
+    def to_dict(self):
+        return {'name': self.name, "url": self.url, "salary": self.__float__(),
+                "experience": self.experience, "tasks": self.tasks}
+
+
+class JSONSaver(Saver):
+    """Создает файл с ключевым словом вакансии"""
+
+    def __init__(self, name_of_file):
+        self.name_of_file = name_of_file
+
+    def save_to_file(self, list_of_vacancies):
+        list_of_dicts = [vac.to_dict() for vac in list_of_vacancies]
+        try:
+            content = json.loads(f"{self.name_of_file}.json")
+        except json.decoder.JSONDecodeError:
+            content = []
+        content += list_of_dicts
+        with open(f"{self.name_of_file}.json", "a", ) as outfile:
+            json.dump(list_of_dicts, outfile)
+            print("Запись в файл прошла успешно")
